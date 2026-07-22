@@ -1,0 +1,5 @@
+Ex : Pre-requisites : 
+
+    - SSH on local / remote machine
+    - Add Credential in the n8n
+    - Groq (LLama Model) for Network Scan Analysis

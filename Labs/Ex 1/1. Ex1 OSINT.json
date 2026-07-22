@@ -1,0 +1,315 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "e1-trigger",
+      "name": "When Chat Message Received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1200,
+        400
+      ],
+      "webhookId": "ex1-osint-flow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = ($node[\"When Chat Message Received\"].json.chatInput || '').trim();\nlet raw = input.replace(/^(do\\s+osint\\s+on|do\\s+osint|osint\\s+on|osint|research|analyze|lookup\\s+on|lookup|find|on)\\s+/i, '').trim();\n\nlet targetName = '';\nlet company = '';\n\nconst fromPattern = /^(.+?)\\s+(?:from|at)\\s+(.+)$/i;\nconst m = raw.match(fromPattern);\n\nif (m) {\n  targetName = m[1].trim();\n  company = m[2].trim();\n} else if (raw.includes(',')) {\n  const parts = raw.split(',');\n  targetName = parts[0].trim();\n  company = parts.slice(1).join(',').trim();\n} else {\n  targetName = raw;\n  company = '';\n}\n\nlet domainSearch = company || targetName;\nlet companyClean = domainSearch.toLowerCase().replace(/\\s+/g, '');\nif (!companyClean.includes('.')) {\n  companyClean += '.com';\n}\n\nreturn [{ json: { targetName, company, companyClean, originalInput: input } }];"
+      },
+      "id": "e1-parse",
+      "name": "Parse Target Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search.json?engine=google&q={{ encodeURIComponent($json.targetName) }}{{ $json.company ? '+' + encodeURIComponent($json.company) : '' }}+site:linkedin.com&api_key=YOUR_SERPAPI_KEY",
+        "options": {}
+      },
+      "id": "e1-linkedin",
+      "name": "LinkedIn Search (SerpAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search.json?engine=google&q={{ encodeURIComponent($json.targetName) }}{{ $json.company ? '+' + encodeURIComponent($json.company) : '' }}+(site:twitter.com+OR+site:facebook.com+OR+site:instagram.com)&api_key=YOUR_SERPAPI_KEY",
+        "options": {}
+      },
+      "id": "e1-social",
+      "name": "Social Media Search (SerpAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -680,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hunter.io/v2/domain-search?domain={{ $json.companyClean }}&limit=10&api_key=YOUR_HUNTER_IO_KEY",
+        "options": {}
+      },
+      "id": "e1-hunter",
+      "name": "Hunter.io Email Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -680,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = Array.isArray($json.organic_results) ? $json.organic_results : [];\nreturn [{ json: { linkedin: res.filter(r => r.link && r.link.includes('linkedin.com')).slice(0,5).map(r => ({ title: r.title, url: r.link, snippet: r.snippet })) } }];"
+      },
+      "id": "e1-parse-li",
+      "name": "Parse LinkedIn",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = Array.isArray($json.organic_results) ? $json.organic_results : [];\nreturn [{ json: { social: res.slice(0,5).map(r => ({ title: r.title, url: r.link, snippet: r.snippet })) } }];"
+      },
+      "id": "e1-parse-social",
+      "name": "Parse Social Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = Array.isArray($json.data?.emails) ? $json.data.emails : [];\nconst cleanEmails = emails.map(e => {\n  let res = { email: e.value };\n  let fullName = (e.first_name || '') + ' ' + (e.last_name || '');\n  if (fullName.trim()) res.name = fullName.trim();\n  if (e.position) res.position = e.position;\n  if (e.department) res.department = e.department;\n  return res;\n});\nreturn [{ json: { emails: cleanEmails, pattern: $json.data?.pattern || '', org: $json.data?.organization || '' } }];"
+      },
+      "id": "e1-parse-hunter",
+      "name": "Parse Hunter Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const getSafe = (nodeName, prop) => {\n  try {\n    return $node[nodeName].json[prop];\n  } catch (e) {\n    return prop === 'pattern' || prop === 'org' ? '' : [];\n  }\n};\n\nconst linkedin = getSafe('Parse LinkedIn', 'linkedin');\nconst social = getSafe('Parse Social Media', 'social');\nconst emails = getSafe('Parse Hunter Data', 'emails');\nconst pattern = getSafe('Parse Hunter Data', 'pattern');\nconst org = getSafe('Parse Hunter Data', 'org');\n\nreturn [{ json: { linkedin, social, emails, pattern, org } }];"
+      },
+      "id": "e1-merge",
+      "name": "Aggregate OSINT Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"llama-3.3-70b-versatile\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a Red Team OSINT specialist. Analyze the gathered intelligence data. Focus strictly on actionable intelligence, attack surface mapping, discovered personnel/emails, and potential social engineering vectors.\\n\\nCRITICAL RULES:\\n1) DIGITAL FOOTPRINT / LINKEDIN: You MUST explicitly output the raw, clickable URLs for ALL discovered LinkedIn profiles and social media links exactly as they appear in the data. Do NOT summarize them away.\\n2) EMAIL INTELLIGENCE: Do NOT guess or generate emails! The OSINT data contains an 'emails' array with ALL discovered organizational emails. You MUST list EVERY single entry in that array - email address, name (if present), position and department. Infer the target from the email prefix if no name is attached. List the rest as Secondary Targets.\\n3) EMAIL PATTERN: State the discovered email pattern so readers can construct additional target addresses.\\n\\nInclude: 1) Executive Summary, 2) Target Footprint & LinkedIn Links (RAW URLS), 3) Discovered Organizational Emails - ALL ENTRIES, 4) Suggested Attack Vectors.\" }, { \"role\": \"user\", \"content\": \"Target: \" + $node[\"Parse Target Input\"].json.targetName + ($node[\"Parse Target Input\"].json.company ? \" from \" + $node[\"Parse Target Input\"].json.company : \"\") + \"\\nOSINT Data:\\n\" + JSON.stringify($json) } ] } }}",
+        "options": {}
+      },
+      "id": "e1-ai",
+      "name": "AI OSINT Report (Groq)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        120,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices && $json.choices[0] && $json.choices[0].message ? $json.choices[0].message.content : 'No analysis available.';\nconst target = $node['Parse Target Input'].json.targetName || 'Unknown';\nconst company = $node['Parse Target Input'].json.company || 'Unknown';\nconst ts = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';\nconst divider = '\\u2550'.repeat(43);\nconst line = '\\u2500'.repeat(43);\nconst report = divider + '\\n\\ud83d\\udd0d  OSINT INTELLIGENCE REPORT\\n' + divider + '\\n\\n\\ud83d\\udccb Target: ' + target + '\\n\\ud83c\\udfe2 Organization: ' + company + '\\n\\ud83d\\udd50 Generated: ' + ts + '\\n\\ud83d\\udd12 Classification: FOR AUTHORIZED USE ONLY\\n\\n' + line + '\\n\\n' + raw + '\\n\\n' + line + '\\n\\ud83d\\udccc Report generated via n8n OSINT Pipeline\\n\\u26a0\\ufe0f  This report is for authorized security assessment purposes only.\\n' + divider;\nreturn [{ json: { formattedReport: report } }];"
+      },
+      "id": "e1-format",
+      "name": "Format Professional Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        360,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { output: $json.formattedReport || 'No report generated.' } }];"
+      },
+      "id": "e1-output",
+      "name": "Final Chat Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        600,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "When Chat Message Received": {
+      "main": [
+        [
+          {
+            "node": "Parse Target Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Target Input": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn Search (SerpAPI)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Social Media Search (SerpAPI)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hunter.io Email Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Search (SerpAPI)": {
+      "main": [
+        [
+          {
+            "node": "Parse LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Social Media Search (SerpAPI)": {
+      "main": [
+        [
+          {
+            "node": "Parse Social Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter.io Email Lookup": {
+      "main": [
+        [
+          {
+            "node": "Parse Hunter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Aggregate OSINT Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Social Media": {
+      "main": [
+        [
+          {
+            "node": "Aggregate OSINT Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Hunter Data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate OSINT Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate OSINT Data": {
+      "main": [
+        [
+          {
+            "node": "AI OSINT Report (Groq)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI OSINT Report (Groq)": {
+      "main": [
+        [
+          {
+            "node": "Format Professional Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Professional Report": {
+      "main": [
+        [
+          {
+            "node": "Final Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "04a0c6180ece4379afb4294db5383af326010135ebf38dffee3d7aeb8947e5fb"
+  }
+}

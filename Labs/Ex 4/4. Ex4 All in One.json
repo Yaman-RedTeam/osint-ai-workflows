@@ -1,0 +1,1494 @@
+{
+  "name": "4. All in One",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "9abf4122-f7ac-44a4-b457-5ad13850d37b",
+      "name": "When Chat Message Received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1280,
+        512
+      ],
+      "webhookId": "f4ffbd50-46e7-4d0c-97cd-e0ec7a65cc40"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"llama-3.3-70b-versatile\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a security intent router. Analyze the user request carefully:\\n\\nReply with 'GITHUB' ONLY if: the user asks to analyze a GitHub user/profile/repository, or the message contains the word 'github' and a likely username (e.g., 'analyze this github octocat').\\n\\nReply with 'SCAN' ONLY if: user mentions 'scan', 'nmap', 'port', 'network scan', or provides an IP address (xxx.xxx.xxx.xxx format).\\n\\nReply with 'OSINT' ONLY if: user mentions 'research', 'company', 'organization', 'employee', 'find', 'gather intel', 'intelligence', or mentions a company/person name.\\n\\nAlways reply with ONLY the single word: GITHUB or SCAN or OSINT\" }, { \"role\": \"user\", \"content\": $json.chatInput } ] } }}",
+        "options": {}
+      },
+      "id": "b0295ad5-9b6c-4df6-8ee7-a4f0f4d8a441",
+      "name": "AI Decision Maker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1072,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "993f443b-3d60-449e-971c-3b9af03a1234",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "SCAN",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SCAN Intent"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "a12b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "OSINT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "OSINT Intent"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "github-intent",
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "GITHUB",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "GITHUB Intent"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d96a361-37a0-4293-87b5-9f7bf8b46633",
+      "name": "Route by AI Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -848,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawInput = ($node[\"When Chat Message Received\"].json.chatInput || '').trim();\n\n// Normalize input\nconst input = rawInput\n  .replace(/^(do\\s+)?(osint|research|analyze|lookup)\\s+(on\\s+)?/i, '')\n  .trim();\n\n// ✅ FIXED regex (added dot support)\nconst fromPattern = /^([\\w\\s\\-]+?)\\s+(?:from|at)\\s+([\\w.\\-]+)$/i;\nconst fromMatch = input.match(fromPattern);\n\nlet employeeName = '';\nlet company = '';\nlet hasEmployee = false;\n\nif (fromMatch) {\n  employeeName = fromMatch[1].trim();\n  company = fromMatch[2].trim();\n  hasEmployee = true;\n} else {\n  // fallback\n  if (/company:|org:/i.test(input)) {\n    const parts = input.split(/company:|org:/i);\n    if (parts.length > 1) {\n      company = parts[1].trim().split(/\\s+/)[0];\n      employeeName = parts[0].trim();\n      hasEmployee = true;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    company: company.toLowerCase(),\n    employeeName,\n    hasEmployee,\n    originalInput: rawInput\n  }\n}];"
+      },
+      "id": "0d9d9ad7-948f-486f-bae8-59446f624df8",
+      "name": "Parse Company",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search.json?engine=google&q=site:linkedin.com+{{$json.employeeName}}+{{$json.company}}&api_key=YOUR_SERPAPI_KEY",
+        "options": {}
+      },
+      "id": "89f26953-cc51-4d44-a809-e4e9033980f6",
+      "name": "LinkedIn Profile Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const users = Array.isArray($json.items) ? $json.items : [];\nconst profiles = users.slice(0, 3).map(u => ({\n  username: u.login,\n  profile_url: u.html_url,\n  avatar: u.avatar_url,\n  repositories_count: u.public_repos\n}));\nreturn [{ json: { github_profiles: profiles } }];"
+      },
+      "id": "e18e2133-fce1-489c-abdc-8fd533ab0e1f",
+      "name": "Parse GitHub User Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        256,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = Array.isArray($json.organic_results) ? $json.organic_results : [];\nconst profiles = results.filter(r => r.link && r.link.includes('linkedin.com')).slice(0, 3).map(r => ({\n  name: r.title || 'Unknown',\n  url: r.link || '',\n  snippet: r.snippet || ''\n}));\nreturn [{ json: { linkedin_profiles: profiles } }];"
+      },
+      "id": "24dd3920-aafa-48e3-9feb-07fce7f2747e",
+      "name": "Parse LinkedIn Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        240,
+        832
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "db2334e1-7a6f-4878-9c0c-7a56532354bb",
+      "name": "Merge Employee Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        496,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a strict OSINT analyst. ONLY use the provided data. DO NOT assume, infer, or fabricate any information. If data is missing, explicitly state 'Not found in provided data'. Maintain high accuracy and attribution.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\":\n        \"Target Employee: \" + $json.employeeName + \"\\n\" +\n        \"Target Company: \" + $json.company + \"\\n\\n\" +\n\n        \"=== OSINT DATA ===\\n\" +\n        JSON.stringify($input.first().json, null, 2) + \"\\n\\n\" +\n\n        \"=== TASK ===\\n\" +\n        \"Generate a structured OSINT report with the following sections:\\n\\n\" +\n\n        \"1. Identified Profiles:\\n\" +\n        \"- List confirmed profiles (LinkedIn, GitHub, Twitter, etc)\\n\" +\n        \"- Only include if explicitly present in data\\n\\n\" +\n\n        \"2. Professional Information:\\n\" +\n        \"- Roles, titles, organizations\\n\\n\" +\n\n        \"3. Technical Skills:\\n\" +\n        \"- Languages, tools, frameworks (ONLY from GitHub or data)\\n\\n\" +\n\n        \"4. Web Mentions:\\n\" +\n        \"- Articles, posts, mentions\\n\\n\" +\n\n        \"5. Contact Information:\\n\" +\n        \"- Emails, phone, domains (ONLY if explicitly present)\\n\\n\" +\n\n        \"6. Confidence Assessment:\\n\" +\n        \"- High / Medium / Low\\n\" +\n        \"- Justify briefly based on data completeness\\n\\n\" +\n\n        \"IMPORTANT RULES:\\n\" +\n        \"- Do NOT fabricate profiles or emails\\n\" +\n        \"- Do NOT guess missing data\\n\" +\n        \"- If unsure, say 'Not found in provided data'\\n\" +\n        \"- Keep output structured and clean\"\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "f61fccb6-529a-4dac-863d-4f4eb3fd5663",
+      "name": "Employee Profile Analyzer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        848,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { employeeOutput: $json.choices?.[0]?.message?.content || 'Employee profile analysis complete' } }];"
+      },
+      "id": "4d9ff7fd-ed87-4c24-89aa-ebb7be1d9d31",
+      "name": "Format Employee Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = Array.isArray($json.organic_results) ? $json.organic_results : [];\n\nconst profiles = res\n  .map(r => {\n    const url = (r.link || r.redirect_link || '').toLowerCase();\n    if (!url) return null;\n\n    return {\n      title: r.title || '',\n      link: url,\n      snippet: r.snippet || ''\n    };\n  })\n  .filter(r => {\n    if (!r) return false;\n\n    const url = r.link;\n\n    return (\n      // ✅ LinkedIn profiles only\n      (url.includes('linkedin.com/in/') || url.includes('linkedin.com/company/')) ||\n\n      // ✅ Twitter/X\n      url.includes('twitter.com/') ||\n      url.includes('x.com/')\n    );\n  })\n  .filter(r => {\n    // ❌ remove garbage\n    return (\n      !r.link.includes('/posts/') &&\n      !r.link.includes('/activity/') &&\n      !r.link.includes('google.com/url')\n    );\n  })\n  // ✅ dedupe\n  .filter((v, i, arr) => arr.findIndex(x => x.link === v.link) === i)\n  .slice(0, 5);\n\nreturn [{\n  json: {\n    social_profiles: profiles\n  }\n}];"
+      },
+      "id": "dbd92604-7437-4908-8baf-f2b64df36b8e",
+      "name": "Parse Social Media",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: $json || {} }];"
+      },
+      "id": "90315c25-134e-4155-aebd-76ebafd26ca6",
+      "name": "Ensure Social Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        224,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "b9e6ed8e-f819-49bc-aa3e-5f2b9a16d61d",
+      "name": "Merge OSINT Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a strict OSINT analyst. ONLY use the provided data. DO NOT infer, assume, or fabricate any information. Every statement must be traceable to the provided data. If data is missing, say 'Not found in provided data'. Clearly separate and attribute all findings by source.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\":\n        \"=== AGGREGATED OSINT DATA ===\\n\" +\n        JSON.stringify($input.all().map(i => i.json), null, 2) + \"\\n\\n\" +\n\n        \"=== TASK ===\\n\" +\n\n        \"Generate a structured OSINT intelligence report with STRICT source attribution.\\n\\n\" +\n\n        \"1. Company Overview:\\n\" +\n        \"- Industry, size, services\\n\" +\n        \"- Source attribution required\\n\\n\" +\n\n        \"2. Employee Profiles:\\n\" +\n        \"- Name, role, profiles\\n\" +\n        \"- MUST NOT mix identities\\n\" +\n        \"- Source attribution required\\n\\n\" +\n\n        \"3. Technology Stack:\\n\" +\n        \"- Languages, frameworks, tools\\n\" +\n        \"- ONLY from GitHub or explicit data\\n\\n\" +\n\n        \"4. Network Infrastructure:\\n\" +\n        \"- IPs, ports, services\\n\" +\n        \"- ONLY from scan/Censys data\\n\\n\" +\n\n        \"5. Emails & Contacts:\\n\" +\n        \"- List EXACT findings\\n\" +\n        \"- DO NOT associate unless explicitly linked\\n\\n\" +\n\n        \"6. Social Media Presence:\\n\" +\n        \"- Platforms and links\\n\\n\" +\n\n        \"7. Security Insights:\\n\" +\n        \"- ONLY based on observed data\\n\" +\n        \"- NO CVE guessing\\n\" +\n        \"- NO assumptions\\n\\n\" +\n\n        \"8. Recommendations (OSINT Next Steps ONLY):\\n\" +\n        \"- Suggest further recon steps\\n\" +\n        \"- DO NOT suggest exploitation steps\\n\\n\" +\n\n        \"9. Confidence Assessment:\\n\" +\n        \"- High / Medium / Low\\n\" +\n        \"- Based on data completeness\\n\\n\" +\n\n        \"IMPORTANT RULES:\\n\" +\n        \"- Do NOT fabricate\\n\" +\n        \"- Do NOT merge unrelated entities\\n\" +\n        \"- Do NOT assume ownership of infrastructure\\n\" +\n        \"- Always mention source (e.g., 'From GitHub data', 'From scan data')\\n\" +\n        \"- If unclear, explicitly say 'Unverified'\"\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "cdf7e13a-f504-447d-8205-4da149bbf23e",
+      "name": "Company Profile Analyzer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        624,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { companyProfileAnalysis: $json.choices?.[0]?.message?.content || 'Company profile analysis complete' } }];"
+      },
+      "id": "c38e09bb-8fe1-41ff-8db2-8be06ecc2670",
+      "name": "Format Company Profile Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        864,
+        992
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allInputs = $input.all();\nconst osintData = (allInputs[0]?.json || {});\nconst companyProfile = (allInputs[1]?.json || {});\nconst companyName = $node[\"Parse Company\"].json.company;\nreturn [{ json: { company: companyName, osintSearches: osintData, companyProfile: companyProfile } }];"
+      },
+      "id": "73ca230f-b6c0-4c6b-827a-7d9c2abb3227",
+      "name": "Merge OSINT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an OSINT intelligence fusion engine. Your job is to MERGE, CLEAN, and STRUCTURE intelligence from multiple analysis sources. Do NOT re-summarize blindly. Extract key signals, remove redundancy, and resolve conflicts. Only use provided data. If conflicting information exists, highlight it.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\":\n        \"=== INPUT ===\\n\" +\n        \"Company: \" + $json.company + \"\\n\\n\" +\n\n        \"Company Profile Analysis:\\n\" +\n        ($json.osintSearches.companyProfileAnalysis || \"Not provided\") + \"\\n\\n\" +\n\n        \"Advanced OSINT Analysis:\\n\" +\n        ($json.osintSearches.advanced_osint_analysis || \"Not provided\") + \"\\n\\n\" +\n\n        \"=== TASK ===\\n\" +\n\n        \"1. Extracted Entities:\\n\" +\n        \"- Company name\\n\" +\n        \"- Employees (name, role, source)\\n\" +\n        \"- Emails\\n\" +\n        \"- Social profiles\\n\\n\" +\n\n        \"2. Email Pattern:\\n\" +\n        \"- Format\\n\" +\n        \"- Confidence\\n\\n\" +\n\n        \"3. Social Presence:\\n\" +\n        \"- Official accounts only\\n\" +\n        \"- Remove duplicate links\\n\\n\" +\n\n        \"4. Key Insights:\\n\" +\n        \"- Derived ONLY from data\\n\\n\" +\n\n        \"5. Data Conflicts:\\n\" +\n        \"- Example: mismatched email ↔ name\\n\\n\" +\n\n        \"6. Intelligence Gaps:\\n\" +\n        \"- What is missing (infra, github, etc)\\n\\n\" +\n\n        \"7. Confidence Score:\\n\" +\n        \"- High / Medium / Low with reason\\n\\n\" +\n\n        \"STRICT RULES:\\n\" +\n        \"- Do NOT repeat large text blocks\\n\" +\n        \"- Do NOT fabricate missing data\\n\" +\n        \"- Prefer structured bullet output\\n\" +\n        \"- Keep it concise and signal-rich\"\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "b15b6dc0-79cb-401b-9266-742b9c670ee5",
+      "name": "OSINT Intelligence Aggregator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1616,
+        1184
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    profileSummary: $json.choices?.[0]?.message?.content || 'OSINT analysis complete'\n  }\n}];\n"
+      },
+      "id": "815718b9-2a1f-43da-9bed-97d234fbbd28",
+      "name": "Format OSINT Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "c380c4ae-a138-4233-82e6-761b94519a88",
+      "name": "Merge Employee & OSINT Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.hunter.io/v2/domain-search?domain={{$json.domain}}&limit=10&api_key=YOUR_HUNTER_IO_KEY",
+        "options": {}
+      },
+      "id": "f80e5c18-5f1d-4723-bd37-26273e0bcb5c",
+      "name": "Hunter.io Email Discovery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -240,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const emails = Array.isArray($json.data?.emails) ? $json.data.emails : [];\nconst discovered = emails.slice(0, 5).map(e => ({ email: e.value, name: e.first_name + ' ' + e.last_name, verified: e.verified }));\nreturn [{ json: { hunter_emails: discovered } }];"
+      },
+      "id": "a9d88dfe-b8f9-4470-bd31-839b278b4262",
+      "name": "Parse Hunter Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "e7f1b4ce-4d31-4978-8612-6e07fa025d5e",
+      "name": "Merge Advanced OSINT",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const advancedData = $json || {};\nreturn [{ json: { advanced_osint: advancedData } }];"
+      },
+      "id": "e6097af1-62ac-4d5b-a94d-084fe6bb6bdc",
+      "name": "Format Advanced OSINT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        528,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a strict OSINT intelligence analyst. ONLY use the provided data. DO NOT infer, assume, or fabricate any missing information. Clearly separate verified data from unverified observations. If something is not present, state 'Not found in provided data'.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\":\n        \"=== INPUT DATA ===\\n\" +\n        JSON.stringify($json, null, 2) + \"\\n\\n\" +\n\n        \"=== TASK ===\\n\" +\n\n        \"1. Social Presence Analysis:\\n\" +\n        \"- List valid social profiles (LinkedIn, X)\\n\" +\n        \"- Identify official company accounts vs posts\\n\\n\" +\n\n        \"2. Email Intelligence:\\n\" +\n        \"- Extract email format (e.g., firstname@domain)\\n\" +\n        \"- Identify naming patterns\\n\" +\n        \"- Highlight inconsistencies between name and email\\n\\n\" +\n\n        \"3. Organization Insights:\\n\" +\n        \"- Derive observations ONLY from social + email data\\n\" +\n        \"- No assumptions beyond data\\n\\n\" +\n\n        \"4. Potential Social Engineering Angles (SAFE):\\n\" +\n        \"- Based ONLY on observed patterns (e.g., public branding, email format)\\n\" +\n        \"- No exploitation steps\\n\\n\" +\n\n        \"5. Data Quality Issues:\\n\" +\n        \"- Highlight mismatches (e.g., name/email inconsistency)\\n\\n\" +\n\n        \"6. Confidence Level:\\n\" +\n        \"- High / Medium / Low with reasoning\\n\\n\" +\n\n        \"IMPORTANT RULES:\\n\" +\n        \"- Do NOT fabricate breach, infrastructure, or internal data\\n\" +\n        \"- Do NOT assume vulnerabilities\\n\" +\n        \"- Do NOT link identities unless explicitly supported\\n\" +\n        \"- Keep analysis evidence-based\"\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "024f44ea-fb02-4065-83f5-857efed9cbf2",
+      "name": "Advanced OSINT AI Analyzer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        720,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { advanced_osint_analysis: $json.choices?.[0]?.message?.content || 'Analysis complete' } }];"
+      },
+      "id": "32638544-f403-4bb4-9748-239363a4c6bf",
+      "name": "Format AI Analysis Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        944,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a Red Team OSINT analyst. Generate a Target Intelligence Report strictly based on provided data. DO NOT assume, infer, or fabricate infrastructure, vulnerabilities, or internal systems. If data is missing, explicitly state 'Not observed'. Only derive attack surface and risks from concrete evidence.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\":\n        \"=== INPUT DATA ===\\n\" +\n        JSON.stringify($input.first().json, null, 2) + \"\\n\\n\" +\n\n        \"=== TASK ===\\n\" +\n\n        \"1. Executive Summary:\\n\" +\n        \"- High-level target overview\\n\\n\" +\n\n        \"2. Observed Attack Surface (STRICT):\\n\" +\n        \"- Public assets ONLY (domains, social profiles, emails)\\n\" +\n        \"- DO NOT mention ports/services unless explicitly present\\n\\n\" +\n\n        \"3. Human Element:\\n\" +\n        \"- Identified personnel\\n\" +\n        \"- Verified roles ONLY\\n\" +\n        \"- Highlight high-value targets (e.g., CEO)\\n\\n\" +\n\n        \"4. OPSEC Observations:\\n\" +\n        \"- Only from visible patterns (email format, public posts, branding)\\n\" +\n        \"- No speculation\\n\\n\" +\n\n        \"5. Potential Attack Vectors (EVIDENCE-BASED):\\n\" +\n        \"- Based ONLY on:\\n\" +\n        \"  • Email patterns\\n\" +\n        \"  • Public profiles\\n\" +\n        \"  • Organizational exposure\\n\" +\n        \"- NO vulnerability claims\\n\" +\n        \"- NO internal access assumptions\\n\\n\" +\n\n        \"6. Data Conflicts / Risks:\\n\" +\n        \"- Identity mismatches\\n\" +\n        \"- Inconsistent data\\n\\n\" +\n\n        \"7. Intelligence Gaps:\\n\" +\n        \"- Missing but relevant recon areas\\n\\n\" +\n\n        \"STRICT RULES:\\n\" +\n        \"- Do NOT fabricate infrastructure or vulnerabilities\\n\" +\n        \"- Do NOT assume access levels\\n\" +\n        \"- Do NOT create phishing templates\\n\" +\n        \"- Keep output precise and evidence-driven\"\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "a13e6ec1-9ca2-4f47-989c-43f2199cdb66",
+      "name": "Unified OSINT Assessment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2272,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.scanOutput || $json.chatOutput || ($json.choices?.[0]?.message?.content) || 'No analysis available.';\nconst ts = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';\nconst divider = '\\u2550'.repeat(43);\nconst line = '\\u2500'.repeat(43);\nconst report = divider + '\\n\\ud83c\\udf10  AI SECURITY ANALYSIS REPORT\\n' + divider + '\\n\\n\\ud83d\\udd50 Generated: ' + ts + '\\n\\ud83d\\udd12 Classification: FOR AUTHORIZED USE ONLY\\n\\n' + line + '\\n\\n' + raw + '\\n\\n' + line + '\\n\\ud83d\\udccc Report generated via n8n Unified AI Pipeline\\n\\u26a0\\ufe0f  This report is for authorized penetration testing purposes only.\\n' + divider;\nreturn [{ json: { output: report } }];"
+      },
+      "id": "be5a30ec-6ca9-4383-b14c-ff597a12a0d5",
+      "name": "Final Chat Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        2416,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputRaw = $node[\"When Chat Message Received\"].json.chatInput || \"\";\nconst input = inputRaw.trim();\n\n// Normalize\nconst clean = input.replace(/\\s+/g, ' ');\n\n// Flags\nconst isAggressive = /aggressive/i.test(clean);\nconst scanType = isAggressive ? 'aggressive' : 'normal';\n\nlet target = null;\n\n// 1️⃣ Extract IP (strict)\nlet match = clean.match(/\\b((25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(?!$)|$)){4}\\b/);\n\n// 2️⃣ Extract URL (http/https)\nif (!match) {\n  const urlMatch = clean.match(/https?:\\/\\/([^\\/\\s]+)/i);\n  if (urlMatch) {\n    target = urlMatch[1];\n  }\n}\n\n// 3️⃣ Extract domain (proper FQDN)\nif (!match && !target) {\n  match = clean.match(/\\b([a-zA-Z0-9-]+\\.)+[a-zA-Z]{2,}\\b/);\n}\n\n// 4️⃣ Keywords like: scan / target / host\nif (!match && !target) {\n  const keywordMatch = clean.match(/(?:scan|target|host)\\s+([a-zA-Z0-9.-]+)/i);\n  if (keywordMatch) {\n    target = keywordMatch[1];\n  }\n}\n\n// 5️⃣ Fallback → find last valid token (NOT random words like \"scan\")\nif (!match && !target) {\n  const tokens = clean.split(/\\s+/).reverse();\n  for (const token of tokens) {\n    if (\n      /^[a-zA-Z0-9.-]+$/.test(token) &&   // valid chars\n      token.includes('.') &&             // must look like domain\n      !/^(scan|run|do|check)$/i.test(token) // avoid verbs\n    ) {\n      target = token;\n      break;\n    }\n  }\n}\n\n// Final assignment\nif (!target && match) {\n  target = match[0];\n}\n\n// Cleanup\nif (target) {\n  target = target\n    .replace(/^https?:\\/\\//, '')\n    .replace(/\\/$/, '')\n    .replace(/[^a-zA-Z0-9.-]/g, '');\n}\n\nreturn [{\n  json: {\n    target,\n    scanType,\n    isAggressive\n  }\n}];"
+      },
+      "id": "b3facfde-c3b4-475c-a5d0-7c57b8d65b5e",
+      "name": "Set Target & Scan Type",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "scan-type-aggressive",
+                    "leftValue": "={{ $json.scanType }}",
+                    "rightValue": "aggressive",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Aggressive Scan"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "scan-type-normal",
+                    "leftValue": "={{ $json.scanType }}",
+                    "rightValue": "normal",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Normal Scan"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eab1cd91-888d-42ce-8352-56e2444bfbf1",
+      "name": "Route by Scan Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -288,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "command": "=nmap -sV -sC -oX - {{ $json.target }}"
+      },
+      "id": "06216b49-31b3-426b-baf7-e54f4fc12ff2",
+      "name": "Run Normal Nmap Scan",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        240
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "Fh4kbIEDFna7ANt9",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=sudo nmap -sV -O -A -T4 -p- -oX - {{ $json.target }}"
+      },
+      "id": "2fde1dc4-8c09-4252-a91d-66fb86d75927",
+      "name": "Run Aggressive Nmap Scan",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "sshPassword": {
+          "id": "Fh4kbIEDFna7ANt9",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "stdout",
+        "options": {}
+      },
+      "id": "2e8026bc-8501-42b4-a54a-d42f50c9a441",
+      "name": "Parse XML",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        272,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nlet hosts = [];\n\nif (data.nmaprun && data.nmaprun.host) {\n    const hostList = Array.isArray(data.nmaprun.host) ? data.nmaprun.host : [data.nmaprun.host];\n    \n    hostList.forEach(host => {\n        if (host.status && host.status.state === 'up') {\n            const hostInfo = { ip: host.address.addr, ports: [] };\n            \n            if (host.ports && host.ports.port) {\n                const ports = Array.isArray(host.ports.port) ? host.ports.port : [host.ports.port];\n                \n                ports.forEach(p => {\n                    if (p.state && p.state.state === 'open') {\n                        // Gather Service Info: Use product/version if name is tcpwrapped\n                        const sName = p.service ? p.service.name : 'unknown';\n                        const product = p.service ? (p.service.product || '') : '';\n                        const version = p.service ? (p.service.version || '') : '';\n                        \n                        // Extract Script Output (useful for identifying real services on tcpwrapped ports)\n                        let scriptData = \"\";\n                        if (p.script) {\n                            const scripts = Array.isArray(p.script) ? p.script : [p.script];\n                            scriptData = scripts.map(s => `${s.id}: ${s.output}`).join(' | ');\n                        }\n\n                        hostInfo.ports.push({ \n                            port: p.portid, \n                            service: sName,\n                            details: `${product} ${version}`.trim(),\n                            scripts: scriptData\n                        });\n                    }\n                });\n            }\n            hosts.push(hostInfo);\n        }\n    });\n}\nreturn [{ json: { hosts, total: hosts.length } }];"
+      },
+      "id": "6110e74e-d03d-4017-ae50-9a4d54fee534",
+      "name": "Process Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        512,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "=json",
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ { \"model\": \"llama-3.1-8b-instant\", \"messages\": [ { \"role\": \"system\", \"content\": \"You are a Red Team security analyst. Analyze the provided Nmap scan results. Reason about potential vulnerabilities, known CVEs, and attack vectors based on the exposed service types and ports. Provide a clear, professional technical summary. Focus on actionable offensive insights. Do not hallucinate data.\" }, { \"role\": \"user\", \"content\": \"Analyze this scan result:\\n\\n\" + JSON.stringify($json) } ], \"temperature\": 0.3 } }}",
+        "options": {}
+      },
+      "id": "ce31aef1-8937-4c71-b937-cd7e8501e78d",
+      "name": "AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        752,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.first().json;\n\nreturn [{\n  json: {\n    scanOutput: aiResponse.choices?.[0]?.message?.content || 'Scan complete.'\n  }\n}];\n"
+      },
+      "id": "7c626989-3c1a-4db3-982b-987ccaca1391",
+      "name": "Format Scan Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        976,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = ($node[\"When Chat Message Received\"].json.chatInput || \"\").trim();\nconst clean = input.replace(/\\s+/g, ' ');\n\nlet username = null;\n\n// 1️⃣ GitHub URL (handles query params, trailing slash)\nlet match = clean.match(/github\\.com\\/([a-zA-Z0-9-_]+)/i);\n\n// 2️⃣ github: username / github username / github = username\nif (!match) {\n  match = clean.match(/github[\\s:=]+@?([a-zA-Z0-9-_]+)/i);\n}\n\n// 3️⃣ Phrases like: \"github profile USERNAME\"\nif (!match) {\n  match = clean.match(/github\\s+(?:profile|user)?\\s*@?([a-zA-Z0-9-_]+)/i);\n}\n\n// 4️⃣ @username anywhere\nif (!match) {\n  match = clean.match(/@([a-zA-Z0-9-_]+)/);\n}\n\n// 5️⃣ Fallback → last valid token in sentence\nif (!match) {\n  const tokens = clean.split(/\\s+/).reverse();\n  for (const token of tokens) {\n    if (/^[a-zA-Z0-9-_]+$/.test(token)) {\n      username = token;\n      break;\n    }\n  }\n} else {\n  username = match[1];\n}\n\n// 6️⃣ Final cleanup\nif (username) {\n  username = username\n    .replace(/^@/, '')\n    .replace(/\\/$/, '')\n    .replace(/[^a-zA-Z0-9-_]/g, '');\n}\n\nreturn [{ json: { username } }];"
+      },
+      "id": "958ecc2a-fec5-4647-a94a-ba1932c1d070",
+      "name": "GitHub - Extract Username",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.github.com/users/${$json.username}/repos` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-github-osint"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb085d3c-5d22-4695-bd2d-1e1a5f3dd9ce",
+      "name": "GitHub - Get Repositories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -464,
+        1808
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawItems = $input.all().map(i => i.json);\nconst repos = rawItems.length === 1 && Array.isArray(rawItems[0]) ? rawItems[0] : rawItems;\n\nreturn repos\n  .filter(r => r && r.owner && r.owner.login && r.name)\n  .map(r => ({\n    json: {\n      owner: r.owner.login,\n      repo: r.name,\n    }\n  }));\n"
+      },
+      "id": "62971bf2-d549-41a7-87dd-a2320c6a9e46",
+      "name": "GitHub - Split Repositories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.github.com/repos/${$json.owner}/${$json.repo}/readme` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-github-osint"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.raw"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ed97336f-e4dc-4096-aa25-18df114ae996",
+      "name": "GitHub - Fetch README",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        240,
+        1712
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.github.com/repos/${$json.owner}/${$json.repo}/commits?per_page=10` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "n8n-github-osint"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "de8e87a2-63c5-4dbc-a8ad-6ba43386324e",
+      "name": "GitHub - Fetch Commits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        16,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawItems = $input.all().map(i => i.json);\nconst commits = rawItems.length === 1 && Array.isArray(rawItems[0]) ? rawItems[0] : rawItems;\n\nconst emails = new Set();\n\nfor (const c of commits) {\n  const email = c?.commit?.author?.email;\n  if (email && !email.includes('noreply')) {\n    emails.add(email);\n  }\n}\n\nreturn [{ json: { emails: Array.from(emails) } }];\n"
+      },
+      "id": "c511eaa5-e165-4a1b-8478-ab1b2ad7e92c",
+      "name": "GitHub - Extract Commit Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        272,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "0bebf08a-b63d-4568-a740-880d121ac076",
+      "name": "GitHub - Merge README + Emails",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        832,
+        1856
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  model: 'llama-3.1-8b-instant',\n  messages: [\n    {\n      role: 'system',\n      content: 'You are a security assistant replying in a chat interface. Analyze a GitHub profile using repository themes, README content, and any publicly exposed commit emails. Do not mention tools or APIs. Explain what was found, why it matters from an OSINT perspective, and keep it conversational.'\n    },\n    {\n      role: 'user',\n      content: 'Analysis data:\\n' + JSON.stringify($json)\n    }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "ecea5af3-32a9-4cdd-bb2d-38f35288e884",
+      "name": "GitHub - AI Chat Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1216,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { chatOutput: $json.choices && $json.choices[0] && $json.choices[0].message ? $json.choices[0].message.content : 'No analysis available.' } }];"
+      },
+      "id": "27e2201f-6bd2-4a50-b094-1743ce652cf6",
+      "name": "GitHub - Return Chat Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1584,
+        1872
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "if ($json.hasEmployee && $json.employeeName && $json.company) {\n  return [{ json: { employeeName: $json.employeeName.trim(), company: $json.company.trim(), hasEmployee: true } }];\n}\nreturn [];"
+      },
+      "id": "f3a9e454-ff95-4be1-a73e-553458a0d736",
+      "name": "Employee Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -272,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let company = ($json.company || '').trim().toLowerCase();\n\n// already a domain → keep it\nif (/^[a-z0-9.-]+\\.[a-z]{2,}$/.test(company)) {\n  return [{ json: { ...$json, domain: company } }];\n}\n\n// convert company name → domain (basic fallback)\nconst cleaned = company.replace(/[^a-z0-9]/g, '');\nreturn [{ json: { ...$json, domain: cleaned + '.com' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        1264
+      ],
+      "id": "b01128c4-99da-486e-b918-5a2473ca3d2e",
+      "name": "Clean Domain"
+    },
+    {
+      "parameters": {
+        "url": "=https://serpapi.com/search.json?engine=google&q={{$json.company}}+(site:linkedin.com+OR+site:twitter.com+OR+site:x.com)&api_key=YOUR_SERPAPI_KEY",
+        "options": {}
+      },
+      "id": "fd1ec540-d47d-4b9b-8ed8-c3985b43e0cf",
+      "name": "Linkedin/X Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -256,
+        1088
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Chat Message Received": {
+      "main": [
+        [
+          {
+            "node": "AI Decision Maker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Decision Maker": {
+      "main": [
+        [
+          {
+            "node": "Route by AI Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by AI Intent": {
+      "main": [
+        [
+          {
+            "node": "Set Target & Scan Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Company",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "GitHub - Extract Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Company": {
+      "main": [
+        [
+          {
+            "node": "Employee Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Linkedin/X Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Clean Domain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn Profile Search": {
+      "main": [
+        [
+          {
+            "node": "Parse LinkedIn Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse GitHub User Results": {
+      "main": [
+        [
+          {
+            "node": "Merge Employee Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LinkedIn Results": {
+      "main": [
+        [
+          {
+            "node": "Merge Employee Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Employee Data": {
+      "main": [
+        [
+          {
+            "node": "Employee Profile Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Employee Profile Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Format Employee Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Employee Output": {
+      "main": [
+        [
+          {
+            "node": "Company Profile Analyzer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Employee & OSINT Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Social Media": {
+      "main": [
+        [
+          {
+            "node": "Ensure Social Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Social Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Advanced OSINT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge OSINT Sources": {
+      "main": [
+        [
+          {
+            "node": "Merge OSINT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Profile Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Format Company Profile Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Company Profile Output": {
+      "main": [
+        [
+          {
+            "node": "Merge OSINT Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge OSINT": {
+      "main": [
+        [
+          {
+            "node": "OSINT Intelligence Aggregator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OSINT Intelligence Aggregator": {
+      "main": [
+        [
+          {
+            "node": "Format OSINT Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format OSINT Output": {
+      "main": [
+        [
+          {
+            "node": "Merge Employee & OSINT Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Employee & OSINT Data": {
+      "main": [
+        [
+          {
+            "node": "Unified OSINT Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter.io Email Discovery": {
+      "main": [
+        [
+          {
+            "node": "Parse Hunter Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Hunter Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Advanced OSINT",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Advanced OSINT": {
+      "main": [
+        [
+          {
+            "node": "Format Advanced OSINT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Advanced OSINT": {
+      "main": [
+        [
+          {
+            "node": "Advanced OSINT AI Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advanced OSINT AI Analyzer": {
+      "main": [
+        [
+          {
+            "node": "Format AI Analysis Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format AI Analysis Output": {
+      "main": [
+        [
+          {
+            "node": "Merge OSINT Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Unified OSINT Assessment": {
+      "main": [
+        [
+          {
+            "node": "Final Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Target & Scan Type": {
+      "main": [
+        [
+          {
+            "node": "Route by Scan Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Scan Type": {
+      "main": [
+        [
+          {
+            "node": "Run Aggressive Nmap Scan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Normal Nmap Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Normal Nmap Scan": {
+      "main": [
+        [
+          {
+            "node": "Parse XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Aggressive Nmap Scan": {
+      "main": [
+        [
+          {
+            "node": "Parse XML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse XML": {
+      "main": [
+        [
+          {
+            "node": "Process Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Results": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Format Scan Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Scan Output": {
+      "main": [
+        [
+          {
+            "node": "Final Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Extract Username": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Get Repositories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Get Repositories": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Split Repositories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Split Repositories": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Fetch README",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "GitHub - Fetch Commits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Fetch README": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Merge README + Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Fetch Commits": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Extract Commit Emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Extract Commit Emails": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Merge README + Emails",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "GitHub - Merge README + Emails": {
+      "main": [
+        [
+          {
+            "node": "GitHub - AI Chat Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - AI Chat Analysis": {
+      "main": [
+        [
+          {
+            "node": "GitHub - Return Chat Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub - Return Chat Output": {
+      "main": [
+        [
+          {
+            "node": "Final Chat Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Employee Search": {
+      "main": [
+        [
+          {
+            "node": "LinkedIn Profile Search",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Parse GitHub User Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Domain": {
+      "main": [
+        [
+          {
+            "node": "Hunter.io Email Discovery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Linkedin/X Search": {
+      "main": [
+        [
+          {
+            "node": "Parse Social Media",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d741a258-d6ff-4f19-b0db-e827d55fe4b6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6e5d28edda20902e1a84c6ec2264609a39b34b7a32e5588e24780f83d2bd3456"
+  },
+  "id": "Tsmu0BWMxoeviKyo",
+  "tags": []
+}

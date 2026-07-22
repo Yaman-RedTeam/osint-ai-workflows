@@ -1,0 +1,110 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e3-trigger",
+      "name": "When Chat Message Received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [-1200, 400],
+      "webhookId": "ex3-nmap-scan-flow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = ($json.chatInput || '').trim();\nconst lower = input.toLowerCase();\nconst ipMatch = input.match(/(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})/);\nconst domainMatch = input.match(/([a-zA-Z0-9][a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})/);\nconst target = ipMatch ? ipMatch[0] : (domainMatch ? domainMatch[0] : input.split(' ').pop());\nconst isVerbose = lower.includes('verbose') || lower.includes('detailed');\nreturn [{ json: { target, scanType: isVerbose ? 'verbose' : 'normal' } }];"
+      },
+      "id": "e3-parse",
+      "name": "Parse Target",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [-960, 400]
+    },
+    {
+      "parameters": {
+        "command": "=nmap -Pn -sV -T4 {{ $json.target }}"
+      },
+      "id": "e3-nmap",
+      "name": "Run Nmap",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [-700, 400],
+      "credentials": {
+        "sshPassword": {
+          "id": "REPLACE_WITH_YOUR_SSH_CREDENTIAL",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+  "parameters": {
+    "jsCode": "const raw = ($json.stdout || '').toString();\nconst ts = new Date().toISOString();\nreturn [{\n  json: {\n    body: {\n      model: 'llama-3.1-8b-instant',\n      messages: [\n        {\n          role: 'system',\n          content: `You are an elite red team operator and senior penetration tester with 15+ years of offensive security experience. Your task is to analyze raw Nmap scan output and produce a clean, structured, actionable security report. Follow this exact format:\\n\\n---\\n\\n## Executive Summary\\nOne paragraph. State what was scanned, how many open ports were found, overall risk posture (Critical / High / Medium / Low / Informational), and the single most dangerous finding.\\n\\n---\\n\\n## Open Ports & Services\\n| Port | Protocol | Service | Version | State |\\n|------|----------|---------|---------|-------|\\nPopulate from scan output. One row per open port. Use \\`Unknown\\` where data is missing.\\n\\n---\\n\\n## Vulnerability Assessment\\nFor each open port/service, provide:\\n\\n### [Port/Service Name]\\n- **Risk Level:** Critical / High / Medium / Low\\n- **Attack Surface:** What an attacker can do with this\\n- **MITRE ATT&CK:** Relevant technique IDs (e.g. T1021.001, T1046)\\n- **CVE References:** Any known CVEs for the detected version (if version is present)\\n- **Recommended Action:** Specific remediation step\\n\\n---\\n\\n## Attack Path Analysis\\nDescribe the most realistic kill chain an attacker could execute using the discovered services. Format as numbered steps. Be specific and technical.\\n\\n---\\n\\n## Risk Score Matrix\\n| Severity | Count | Ports Affected |\\n|----------|-------|----------------|\\n| Critical | X | ... |\\n| High | X | ... |\\n| Medium | X | ... |\\n| Low | X | ... |\\n\\n**Overall Risk Score:** [X/10] — [brief justification]\\n\\n---\\n\\n## Immediate Actions Required\\nNumbered list of the top 5 most urgent remediation steps. Prioritize by exploitability × impact.\\n\\n---\\n\\n> Scan analyzed: ${ts}\\n> Classification: AUTHORIZED PENETRATION TEST — CONFIDENTIAL`\n        },\n        {\n          role: 'user',\n          content: `Analyze the following Nmap scan output and produce the full structured report:\\n\\n\\`\\`\\`\\n${raw}\\n\\`\\`\\``\n        }\n      ],\n      temperature: 0.2\n    }\n  }\n}];"
+  },
+  "id": "e3-body",
+  "name": "Prepare AI Body",
+  "type": "n8n-nodes-base.code",
+  "typeVersion": 1,
+  "position": [-400, 400]
+},
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Connection",
+              "value": "close"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "e3-ai",
+      "name": "Groq Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-100, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.choices?.[0]?.message?.content || 'No output analysis available.';\nconst ts = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';\nconst divider = '\\u2550'.repeat(43);\nconst line = '\\u2500'.repeat(43);\nconst report = divider + '\\n\\ud83c\\udf10  NETWORK SCAN REPORT\\n' + divider + '\\n\\n\\ud83d\\udd50 Generated: ' + ts + '\\n\\ud83d\\udd12 Classification: FOR AUTHORIZED USE ONLY\\n\\n' + line + '\\n\\n' + raw + '\\n\\n' + line + '\\n\\ud83d\\udccc Report generated via n8n Nmap Pipeline\\n\\u26a0\\ufe0f  This report is for authorized penetration testing purposes only.\\n' + divider;\nreturn [{ json: { output: report } }];"
+      },
+      "id": "e3-format",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [150, 400]
+    }
+  ],
+  "connections": {
+    "When Chat Message Received": {
+      "main": [[{ "node": "Parse Target", "type": "main", "index": 0 }]]
+    },
+    "Parse Target": {
+      "main": [[{ "node": "Run Nmap", "type": "main", "index": 0 }]]
+    },
+    "Run Nmap": {
+      "main": [[{ "node": "Prepare AI Body", "type": "main", "index": 0 }]]
+    },
+    "Prepare AI Body": {
+      "main": [[{ "node": "Groq Analysis", "type": "main", "index": 0 }]]
+    },
+    "Groq Analysis": {
+      "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]]
+    }
+  }
+}
