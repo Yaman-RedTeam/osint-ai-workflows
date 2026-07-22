@@ -33,7 +33,7 @@ A set of **n8n** automation workflows that chain AI (Groq) with OSINT data sourc
 ## ⚙️ Prerequisites
 
 - 🐳 Docker installed
-- 🔗 [n8n](https://n8n.io/) (self-hosted or cloud)
+- [n8n](https://n8n.io/) (self-hosted or cloud)
 - 🔑 API keys for:
   - [SerpAPI](https://serpapi.com/) — Google / LinkedIn / X / Facebook / Instagram search
   - [Hunter.io](https://hunter.io/) — email & company lookup
