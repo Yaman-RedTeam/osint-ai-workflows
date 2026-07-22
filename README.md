@@ -41,6 +41,8 @@ A set of **n8n** automation workflows that chain AI (Groq) with OSINT data sourc
 
 ## 🚀 Setup
 
+> 📘 New here? See the full walkthrough in [GUIDE.md](./GUIDE.md).
+
 1. Import the desired `.json` workflow into n8n.
 2. Replace the placeholder values (`YOUR_SERPAPI_KEY`, `YOUR_HUNTER_IO_KEY`, `YOUR_GROQ_API_KEY`) with your own API keys — either directly in the HTTP Request nodes or, preferably, via n8n credentials.
 3. Activate the workflow and trigger it via the chat trigger node.
