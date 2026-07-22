@@ -48,7 +48,7 @@ A set of **n8n** automation workflows that chain AI (Groq) with OSINT data sourc
 ## 📁 Structure
 
 ```
-Labs/
+n8n-workflows/
 ├── Ex 1/   → OSINT
 ├── Ex 2/   → OSINT + Phishing
 ├── Ex 3/   → Scan
